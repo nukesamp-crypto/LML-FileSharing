@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LML — اشتراک‌گذاری فایل</title>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;500;700;900&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Vazirmatn', sans-serif; }
+
+body {
+  min-height: 100vh;
+  background: #0a0a1a;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(124, 77, 255, .35), transparent),
+    radial-gradient(ellipse 60% 50% at 90% 10%, rgba(0, 210, 255, .22), transparent),
+    radial-gradient(ellipse 50% 60% at 50% 110%, rgba(255, 0, 128, .18), transparent);
+  color: #fff;
+  overflow-x: hidden;
+}
+
+/* animated stars */
+.stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+.stars::before, .stars::after {
+  content: ''; position: absolute; width: 2px; height: 2px;
+  background: #fff; border-radius: 50%;
+  box-shadow: 80px 40px #fff, 200px 120px rgba(255,255,255,.6), 350px 80px #fff,
+    500px 200px rgba(255,255,255,.5), 700px 60px #fff, 900px 150px rgba(255,255,255,.7),
+    1100px 90px #fff, 1300px 220px rgba(255,255,255,.4), 60px 300px rgba(255,255,255,.5),
+    400px 400px #fff, 800px 350px rgba(255,255,255,.6), 1200px 380px #fff;
+  animation: twinkle 4s infinite alternate;
+}
+.stars::after { animation-delay: 2s; }
+@keyframes twinkle { from { opacity: .4 } to { opacity: 1 } }
+
+.wrap { position: relative; z-index: 1; max-width: 800px; margin: 0 auto; padding: 40px 20px 80px; }
+
+header { text-align: center; margin-bottom: 50px; }
+.logo {
+  display: inline-flex; align-items: center; gap: 14px;
+  font-size: 3.4rem; font-weight: 900; letter-spacing: 2px;
+  background: linear-gradient(135deg, #7c4dff 0%, #00d2ff 50%, #ff0080 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 25px rgba(124, 77, 255, .5));
+}
+.logo .icon { font-size: 2.6rem; -webkit-text-fill-color: initial; }
+.tagline { color: rgba(255,255,255,.55); font-size: 1.05rem; margin-top: 8px; font-weight: 300; }
+
+/* glass card */
+.glass {
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 24px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .4);
+}
+
+.card { padding: 44px 36px; position: relative; overflow: hidden; }
+.card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(124,77,255,.8), rgba(0,210,255,.8), transparent);
+}
+
+/* drop zone */
+.dropzone {
+  border: 2px dashed rgba(124, 77, 255, .45);
+  border-radius: 18px; padding: 56px 20px; text-align: center;
+  cursor: pointer; transition: all .3s ease;
+  background: rgba(124, 77, 255, .04);
+}
+.dropzone:hover, .dropzone.drag {
+  border-color: #00d2ff;
+  background: rgba(0, 210, 255, .07);
+  transform: scale(1.01);
+  box-shadow: 0 0 40px rgba(0, 210, 255, .15) inset;
+}
+.dropzone .dz-icon { font-size: 3.2rem; margin-bottom: 14px; animation: float 3s ease-in-out infinite; }
+@keyframes float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-10px) } }
+.dropzone h3 { font-size: 1.25rem; font-weight: 700; margin-bottom: 6px; }
+.dropzone p { color: rgba(255,255,255,.45); font-size: .9rem; }
+
+.btn {
+  display: inline-block; padding: 12px 32px; margin-top: 18px;
+  border: none; border-radius: 12px; cursor: pointer;
+  font-family: inherit; font-size: 1rem; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, #7c4dff, #00d2ff);
+  box-shadow: 0 8px 24px rgba(124, 77, 255, .35);
+  transition: all .25s ease;
+}
+.btn:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(0, 210, 255, .45); }
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.btn.secondary {
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.2);
+  box-shadow: none;
+}
+
+/* progress */
+.progress-wrap { display: none; margin-top: 26px; }
+.progress-wrap.show { display: block; }
+.progress-bar {
+  height: 12px; border-radius: 10px; overflow: hidden;
+  background: rgba(255,255,255,.08);
+}
+.progress-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #7c4dff, #00d2ff, #ff0080);
+  background-size: 200% 100%;
+  border-radius: 10px;
+  transition: width .25s ease;
+  animation: flow 2s linear infinite;
+}
+@keyframes flow { to { background-position: 200% 0 } }
+.progress-text { text-align: center; margin-top: 10px; font-size: .9rem; color: rgba(255,255,255,.6); }
+
+/* result */
+.result { display: none; margin-top: 34px; animation: fadeUp .5s ease; }
+.result.show { display: block; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(24px) } to { opacity: 1; transform: none } }
+
+.result-grid { display: grid; grid-template-columns: 1fr 200px; gap: 24px; align-items: center; }
+@media (max-width: 560px) { .result-grid { grid-template-columns: 1fr; } }
+
+.file-info { background: rgba(0,0,0,.25); border-radius: 16px; padding: 22px; border: 1px solid rgba(255,255,255,.08); }
+.file-info .f-name { font-weight: 700; font-size: 1.1rem; margin-bottom: 4px; word-break: break-all; }
+.file-info .f-meta { color: rgba(255,255,255,.5); font-size: .85rem; }
+
+.link-box {
+  display: flex; gap: 10px; margin-top: 18px;
+  background: rgba(0,0,0,.35); border: 1px solid rgba(0, 210, 255, .3);
+  border-radius: 12px; padding: 6px;
+}
+.link-box input {
+  flex: 1; background: none; border: none; outline: none;
+  color: #00d2ff; font-family: inherit; font-size: .92rem;
+  padding: 8px 12px; direction: ltr; text-align: left;
+}
+.copy-btn {
+  padding: 8px 18px; border: none; border-radius: 8px; cursor: pointer;
+  background: linear-gradient(135deg, #00d2ff, #7c4dff);
+  color: #fff; font-weight: 700; font-family: inherit;
+  transition: transform .2s;
+}
+.copy-btn:hover { transform: scale(1.05); }
+
+.qr-box {
+  background: rgba(255,255,255,.06); border-radius: 16px;
+  padding: 14px; text-align: center; border: 1px solid rgba(255,255,255,.1);
+}
+.qr-box img { width: 100%; max-width: 180px; border-radius: 10px; }
+.qr-box p { font-size: .78rem; color: rgba(255,255,255,.5); margin-top: 8px; }
+
+.actions { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+
+/* features row */
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 50px; }
+@media (max-width: 560px) { .features { grid-template-columns: 1fr; } }
+.feature { padding: 24px 20px; text-align: center; }
+.feature .f-icon { font-size: 1.9rem; margin-bottom: 10px; }
+.feature h4 { font-size: .98rem; font-weight: 700; margin-bottom: 6px; }
+.feature p { font-size: .82rem; color: rgba(255,255,255,.45); }
+
+/* toast */
+.toast {
+  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(80px);
+  padding: 12px 28px; border-radius: 12px; font-weight: 700;
+  background: linear-gradient(135deg, #7c4dff, #00d2ff);
+  box-shadow: 0 10px 40px rgba(124,77,255,.5);
+  opacity: 0; transition: all .35s ease; z-index: 99;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+footer { text-align: center; margin-top: 60px; color: rgba(255,255,255,.3); font-size: .82rem; }
+footer b { background: linear-gradient(90deg, #7c4dff, #00d2ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+</style>
+</head>
+<body>
+<div class="stars"></div>
+<div class="wrap">
+
+  <header>
+    <div class="logo"><span class="icon">🚀</span> LML</div>
+    <p class="tagline">فایلتو بفرست، لینک بگیر، اشتراک بذار — سریع، ساده، خفن</p>
+  </header>
+
+  <div class="glass card">
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">📁</div>
+      <h3>فایلت رو اینجا رها کن</h3>
+      <p>یا کلیک کن و انتخابش کن • حداکثر ۱۰۰ مگابایت</p>
+      <input type="file" id="fileInput" hidden>
+    </div>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <p class="progress-text" id="progressText">در حال آپلود... 0%</p>
+    </div>
+
+    <div class="result" id="result">
+      <div class="result-grid">
+        <div>
+          <div class="file-info">
+            <div class="f-name" id="fileName"></div>
+            <div class="f-meta" id="fileMeta"></div>
+          </div>
+          <div class="link-box">
+            <input type="text" id="fileLink" readonly>
+            <button class="copy-btn" id="copyBtn">کپی لینک</button>
+          </div>
+          <div class="actions">
+            <a class="btn" id="downloadBtn" href="#" target="_blank">⬇ دانلود</a>
+            <a class="btn secondary" id="qrDownloadBtn" download="lml-qr.png">💾 ذخیره کیوآر</a>
+            <button class="btn secondary" id="againBtn">بارگذاری مجدد</button>
+          </div>
+        </div>
+        <div class="qr-box">
+          <img id="qrImg" alt="QR Code">
+          <p>اسکن کن و دانلود کن 📱</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="features">
+    <div class="glass feature">
+      <div class="f-icon">⚡</div>
+      <h4>سرعت بی‌نظیر</h4>
+      <p>آپلود فوری و لینک آنی</p>
+    </div>
+    <div class="glass feature">
+      <div class="f-icon">📱</div>
+      <h4>کیوآر کد</h4>
+      <p>اسکن کن، مستقیم دانلود کن</p>
+    </div>
+    <div class="glass feature">
+      <div class="f-icon">🔒</div>
+      <h4>لینک امن</h4>
+      <p>کد ۸ رقمی تصادفی و غیرقابل حدس</p>
+    </div>
+  </div>
+
+  <footer>ساخته شده با ❤️ توسط <b>LML</b> • نسخه ۱.۰</footer>
+</div>
+
+<div class="toast" id="toast">کپی شد! ✨</div>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const progressWrap = document.getElementById('progressWrap');
+const progressFill = document.getElementById('progressFill');
+const progressText = document.getElementById('progressText');
+const result = document.getElementById('result');
+
+dropzone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => fileInput.files[0] && uploadFile(fileInput.files[0]));
+
+['dragenter', 'dragover'].forEach(e => dropzone.addEventListener(e, ev => {
+  ev.preventDefault(); dropzone.classList.add('drag');
+}));
+['dragleave', 'drop'].forEach(e => dropzone.addEventListener(e, ev => {
+  ev.preventDefault(); dropzone.classList.remove('drag');
+}));
+dropzone.addEventListener('drop', ev => {
+  const f = ev.dataTransfer.files[0];
+  if (f) uploadFile(f);
+});
+
+function uploadFile(file) {
+  if (file.size > 100 * 1024 * 1024) {
+    alert('حجم فایل بیشتر از ۱۰۰ مگابایته!');
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  const xhr = new XMLHttpRequest();
+  progressWrap.classList.add('show');
+  result.classList.remove('show');
+
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) {
+      const pct = Math.round(e.loaded / e.total * 100);
+      progressFill.style.width = pct + '%';
+      progressText.textContent = 'در حال آپلود... ' + pct + '%';
+    }
+  };
+
+  xhr.onload = () => {
+    if (xhr.status === 200) {
+      progressFill.style.width = '100%';
+      progressText.textContent = 'آپلود کامل شد ✅';
+      setTimeout(() => showResult(JSON.parse(xhr.responseText)), 400);
+    } else {
+      progressText.textContent = 'خطا در آپلود ❌';
+    }
+  };
+  xhr.onerror = () => progressText.textContent = 'خطای شبکه ❌';
+  xhr.open('POST', '/api/upload');
+  xhr.send(fd);
+}
+
+function showResult(data) {
+  document.getElementById('fileName').textContent = '📄 ' + data.originalName;
+  document.getElementById('fileMeta').textContent =
+    'حجم: ' + formatSize(data.size);
+  document.getElementById('fileLink').value = data.link;
+  document.getElementById('downloadBtn').href = '/dl/' + data.code;
+  document.getElementById('qrImg').src = data.qr;
+  document.getElementById('qrDownloadBtn').href = data.qr;
+  result.classList.add('show');
+}
+
+function formatSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+  return (b / 1073741824).toFixed(2) + ' GB';
+}
+
+document.getElementById('copyBtn').addEventListener('click', () => {
+  const inp = document.getElementById('fileLink');
+  inp.select();
+  navigator.clipboard.writeText(inp.value).then(() => {
+    const t = document.getElementById('toast');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 1800);
+  });
+});
+
+document.getElementById('againBtn').addEventListener('click', () => {
+  result.classList.remove('show');
+  progressWrap.classList.remove('show');
+  progressFill.style.width = '0%';
+  fileInput.value = '';
+});
+</script>
+</body>
+</html>

@@ -4,21 +4,75 @@ const { customAlphabet } = require('nanoid');
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
-const mime = require('mime-types');
+const os = require('os');
 
 const app = express();
-const PORT = 3000;
-const BASE_URL = `http://localhost:${PORT}`;
 
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// ---------- CONFIG (env-aware, EXE-friendly) ----------
+const PORT = process.env.PORT || 3000;
+const IS_PACKAGED = typeof process.pkg !== 'undefined';
+const APP_DIR = IS_PACKAGED ? path.dirname(process.execPath) : __dirname;
+const DATA_DIR = path.join(APP_DIR, 'lml-data');
+const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
+const DB_FILE = path.join(DATA_DIR, 'db.json');
 
-const db = {};
+// BASE_URL: env > LAN IP (so phone on same WiFi can scan QR and download)
+function getBaseUrl() {
+  if (process.env.BASE_URL) return process.env.BASE_URL;
+  const ifaces = os.networkInterfaces();
+  for (const name of Object.keys(ifaces)) {
+    for (const iface of ifaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return `http://${iface.address}:${PORT}`;
+      }
+    }
+  }
+  return `http://localhost:${PORT}`;
+}
+const BASE_URL = getBaseUrl();
 
+// ---------- DIRS ----------
+for (const d of [DATA_DIR, UPLOAD_DIR]) {
+  if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+}
+
+// ---------- DB (persistent JSON) ----------
+let db = {};
+function saveDb() {
+  try { fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2)); } catch (e) { console.error('DB save error:', e.message); }
+}
+function loadDb() {
+  try {
+    if (fs.existsSync(DB_FILE)) db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  } catch (e) { db = {}; }
+}
+loadDb();
+// cleanup: remove entries whose files are gone
+for (const code of Object.keys(db)) {
+  if (!fs.existsSync(path.join(UPLOAD_DIR, db[code].storedName))) delete db[code];
+}
+saveDb();
+
+// ---------- HELPERS ----------
 const newCode = customAlphabet('abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789', 8);
 
+function getBaseUrlRequest(req) {
+  // respect reverse-proxy headers (Render/Railway/Nginx)
+  const proto = req.headers['x-forwarded-proto'] || 'http';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || req.hostname;
+  return `${proto}://${host}`;
+}
+
+function formatSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+  return (b / 1073741824).toFixed(2) + ' GB';
+}
+
+// ---------- MULTER ----------
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  destination: (req, file, b) => b(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
     const code = newCode();
     const safeName = file.originalname.replace(/[^\w\-.() ]+/g, '_').slice(0, 100);
@@ -28,73 +82,10 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 100 * 1024 * 1024 }
+  limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE || '104857600', 10) }
 });
 
-// ---------- API ROUTES ----------
-
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, service: 'LML', files: Object.keys(db).length });
-});
-
-// POST /api/upload
-app.post('/api/upload', upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-
-  const code = req.file.filename.slice(0, 8);
-  db[code] = {
-    code,
-    originalName: req.file.originalname,
-    storedName: req.file.filename,
-    size: req.file.size,
-    mimeType: req.file.mimetype || 'application/octet-stream',
-    uploadDate: new Date().toISOString(),
-    downloads: 0
-  };
-
-  const link = `${BASE_URL}/d/${code}`;
-  QRCode.toDataURL(link, { width: 300, margin: 1, color: { dark: '#ffffff', light: '#0a0a1a' } })
-    .then(qr => res.json({ ...db[code], link, qr }))
-    .catch(() => res.json({ ...db[code], link }));
-});
-
-// GET /api/file/:code  -> metadata + qr
-app.get('/api/file/:code', (req, res) => {
-  const meta = db[req.params.code];
-  if (!meta) return res.status(404).json({ error: 'Not found' });
-
-  const link = `${BASE_URL}/d/${meta.code}`;
-  QRCode.toDataURL(link, { width: 300, margin: 1, color: { dark: '#ffffff', light: '#0a0a1a' } })
-    .then(qr => res.json({ ...meta, link, qr }))
-    .catch(() => res.json({ ...meta, link }));
-});
-
-// GET /api/qr/:code  -> png
-app.get('/api/qr/:code', (req, res) => {
-  const meta = db[req.params.code];
-  if (!meta) return res.status(404).json({ error: 'Not found' });
-
-  QRCode.toBuffer(`${BASE_URL}/d/${meta.code}`, { width: 400, margin: 1, color: { dark: '#ffffff', light: '#0a0a1a' } })
-    .then(buf => {
-      res.set('Content-Type', 'image/png');
-      res.send(buf);
-    })
-    .catch(() => res.status(500).json({ error: 'QR error' }));
-});
-
-// GET /d/:code  -> download page
-app.get('/d/:code', async (req, res) => {
-  const meta = db[req.params.code];
-  if (!meta) return res.status(404).send(errorPage('۴۰۴ — پیدا نشد', 'این فایل وجود نداره یا حذف شده.', '🔍'));
-
-  const qrLink = await QRCode.toDataURL(`${BASE_URL}/d/${meta.code}`, { width: 200, margin: 1, color: { dark: '#ffffff', light: '#0a0a1a' } }).catch(() => '');
-  res.send(downloadPage(meta, qrLink, `${BASE_URL}/dl/${meta.code}`));
-});
-
-// ---------- STATIC ----------
-
-app.use(express.static(path.join(__dirname, '..', 'frontend')));
-
+// ---------- PAGES ----------
 const errorPage = (title, msg, icon) => `<!DOCTYPE html>
 <html lang="fa" dir="rtl"><head><meta charset="UTF-8"><title>${title} — LML</title>
 <style>
@@ -111,6 +102,8 @@ background:linear-gradient(135deg,#7c4dff,#00d2ff);box-shadow:0 8px 30px rgba(12
 a:hover{transform:translateY(-3px)}
 </style></head><body><div class="box"><div class="i">${icon}</div><h1>${title}</h1><p>${msg}</p>
 <a href="/">برگشت به LML 🚀</a></div></body></html>`;
+
+const qrOpts = { width: 300, margin: 1, color: { dark: '#ffffff', light: '#0a0a1a' } };
 
 const downloadPage = (meta, qrLink, downloadLink) => `<!DOCTYPE html>
 <html lang="fa" dir="rtl"><head><meta charset="UTF-8">
@@ -151,13 +144,90 @@ background:linear-gradient(135deg,#7c4dff,#00d2ff);box-shadow:0 10px 34px rgba(1
 <div class="brand">قدرت گرفته از <b>LML</b> 🚀</div>
 </body></html>`;
 
-app.get('/d/:code', (req, res) => {
-  const meta = db[req.params.code];
-  if (!meta) return res.status(404).send(errorPage('۴۰۴ — پیدا نشد', 'این فایل وجود نداره یا حذف شده.', '🔍'));
-  res.send(errorPage(meta.originalName, `حجم: ${formatSize(meta.size)} • دانلودها: ${meta.downloads}`, '⬇')).end();
+// ---------- API ROUTES ----------
+
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, service: 'LML', files: Object.keys(db).length, baseUrl: BASE_URL });
 });
 
-// HEAD /d/:code -> raw download (for right-click save / download managers)
+// POST /api/upload
+app.post('/api/upload', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  const code = req.file.filename.slice(0, 8);
+  db[code] = {
+    code,
+    originalName: req.file.originalname,
+    storedName: req.file.filename,
+    size: req.file.size,
+    mimeType: req.file.mimetype || 'application/octet-stream',
+    uploadDate: new Date().toISOString(),
+    downloads: 0
+  };
+  saveDb();
+
+  const base = getBaseUrlRequest(req);
+  const link = `${base}/d/${code}`;
+  QRCode.toDataURL(link, qrOpts)
+    .then(qr => res.json({ ...db[code], link, qr }))
+    .catch(() => res.json({ ...db[code], link }));
+});
+
+// GET /api/file/:code -> metadata + qr
+app.get('/api/file/:code', (req, res) => {
+  const meta = db[req.params.code];
+  if (!meta) return res.status(404).json({ error: 'Not found' });
+
+  const base = getBaseUrlRequest(req);
+  const link = `${base}/d/${meta.code}`;
+  QRCode.toDataURL(link, qrOpts)
+    .then(qr => res.json({ ...meta, link, qr }))
+    .catch(() => res.json({ ...meta, link }));
+});
+
+// GET /api/files -> list all files
+app.get('/api/files', (req, res) => {
+  const list = Object.values(db).sort((a, b) => new Date(b.uploadDate) - new Date(a.uploadDate));
+  res.json(list);
+});
+
+// DELETE /api/file/:code -> remove file
+app.delete('/api/file/:code', (req, res) => {
+  const meta = db[req.params.code];
+  if (!meta) return res.status(404).json({ error: 'Not found' });
+
+  const filePath = path.join(UPLOAD_DIR, meta.storedName);
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  delete db[req.params.code];
+  saveDb();
+  res.json({ ok: true, deleted: req.params.code });
+});
+
+// GET /api/qr/:code -> png
+app.get('/api/qr/:code', (req, res) => {
+  const meta = db[req.params.code];
+  if (!meta) return res.status(404).json({ error: 'Not found' });
+
+  const base = getBaseUrlRequest(req);
+  QRCode.toBuffer(`${base}/d/${meta.code}`, { ...qrOpts, width: 400 })
+    .then(buf => {
+      res.set('Content-Type', 'image/png');
+      res.send(buf);
+    })
+    .catch(() => res.status(500).json({ error: 'QR error' }));
+});
+
+// GET /d/:code -> download page
+app.get('/d/:code', async (req, res) => {
+  const meta = db[req.params.code];
+  if (!meta) return res.status(404).send(errorPage('۴۰۴ — پیدا نشد', 'این فایل وجود نداره یا حذف شده.', '🔍'));
+
+  const base = getBaseUrlRequest(req);
+  const qrLink = await QRCode.toDataURL(`${base}/d/${meta.code}`, { ...qrOpts, width: 200 }).catch(() => '');
+  res.send(downloadPage(meta, qrLink, `${base}/dl/${meta.code}`));
+});
+
+// GET /dl/:code -> actual download
 app.get('/dl/:code', (req, res) => {
   const meta = db[req.params.code];
   if (!meta) return res.status(404).send(errorPage('۴۰۴ — پیدا نشد', 'این فایل وجود نداره یا حذف شده.', '🔍'));
@@ -166,6 +236,7 @@ app.get('/dl/:code', (req, res) => {
   if (!fs.existsSync(filePath)) return res.status(410).send(errorPage('۴۱۰ — منقضی شده', 'این فایل دیگه روی سرور نیست.', '⏰'));
 
   meta.downloads++;
+  saveDb();
 
   res.set('Content-Type', meta.mimeType);
   res.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(meta.originalName)}`);
@@ -173,20 +244,59 @@ app.get('/dl/:code', (req, res) => {
   fs.createReadStream(filePath).pipe(res);
 });
 
+// ---------- STATIC ----------
+// In packaged EXE, frontend files are embedded in pkg snapshot
+const FRONTEND_DIR = IS_PACKAGED
+  ? path.join(path.dirname(process.execPath), '..', 'frontend')
+  : path.join(__dirname, '..', 'frontend');
+
+// embedded fallback (works inside pkg snapshot)
+let indexHtml = null;
+function getIndexHtml() {
+  if (indexHtml) return indexHtml;
+  try {
+    indexHtml = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'index.html'), 'utf8');
+  } catch (e) {
+    try {
+      indexHtml = fs.readFileSync(path.join(FRONTEND_DIR, 'index.html'), 'utf8');
+    } catch (e2) {
+      indexHtml = errorPage('خطا', 'فایل frontend/index.html پیدا نشد', '⚠️');
+    }
+  }
+  return indexHtml;
+}
+
+if (!IS_PACKAGED) {
+  app.use(express.static(FRONTEND_DIR));
+}
+app.get('/', (req, res) => res.send(getIndexHtml()));
+
 app.use((req, res) => {
   res.status(404).send(errorPage('۴۰۴', 'صفحه‌ای که دنبالش بودی اینجا نیست.', '🚀'));
 });
 
-function formatSize(b) {
-  if (b < 1024) return b + ' B';
-  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
-  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
-  return (b / 1073741824).toFixed(2) + ' GB';
-}
-
-app.listen(PORT, () => {
-  console.log(`\n  LML File Sharing`);
-  console.log(`  ----------------`);
-  console.log(`  URL: ${BASE_URL}`);
-  console.log(`  Upload dir: ${UPLOAD_DIR}\n`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`
+  ┌─────────────────────────────────────────┐
+  │                                         │
+  │   ██╗     ██╗███╗   ███╗██╗  ██╗       │
+  │   ██║     ██║████╗ ████║██║ ██╔╝       │
+  │   ██║     ██║██╔████╔██║█████╔╝        │
+  │   ██║     ██║██║╚██╔╝██║██╔═██╗        │
+  │   ███████╗██║██║ ╚═╝ ██║██║  ██╗       │
+  │   ╚══════╝╚═╝╚═╝     ╚═╝╚═╝  ╚═╝       │
+  │                                         │
+  │   🚀  LML File Sharing v1.0            │
+  │                                         │
+  │   Local:   http://localhost:${PORT}       │
+  │   Network: ${BASE_URL}  │
+  │   Data:    ${DATA_DIR}  │
+  │                                         │
+  └─────────────────────────────────────────┘
+  `);
+  // open browser automatically (EXE mode)
+  if (IS_PACKAGED) {
+    const { exec } = require('child_process');
+    exec('start http://localhost:' + PORT, { shell: 'cmd.exe' });
+  }
 });

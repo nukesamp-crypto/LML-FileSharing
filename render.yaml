@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: lml-file-sharing
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: MAX_FILE_SIZE
+        value: "104857600"
+    healthCheckPath: /api/health

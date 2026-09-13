@@ -3,13 +3,24 @@
   "version": "1.0.0",
   "description": "LML - File Sharing Tool",
   "main": "server.js",
+  "bin": "server.js",
+  "pkg": {
+    "assets": [
+      "../frontend/**/*"
+    ],
+    "outputPath": "dist"
+  },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "pkg . --compress GZip"
   },
   "dependencies": {
     "express": "^4.19.2",
-    "multer": "^2.3.0",
+    "multer": "^2.0.2",
     "nanoid": "^3.3.7",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.22.0"
   }
 }
